@@ -1,38 +1,28 @@
 let myChart = null;
 
 function goToSource(url) {
-    if (confirm("Resmi veri kaynağına (TCMB/TÜİK/Investing) gidilsin mi?")) {
+    if (confirm("VeltusApp'ten ayrılıp resmi kaynağa gitmek istediğinize emin misiniz?")) {
         window.open(url, '_blank');
     }
-}
-
-async function fetchMacroData() {
-    const response = await fetch('http://localhost:3000/api/macro');
-    if (!response.ok) throw new Error("Server hatası");
-    return await response.json();
-}
-
-function calcPoints(value, minVal, maxVal, maxPoints) {
-    let ratio = (value - minVal) / (maxVal - minVal);
-    ratio = Math.max(0, Math.min(1, ratio)); 
-    return Math.round(ratio * maxPoints);
 }
 
 async function runRadar() {
     const btn = document.getElementById('runBtn');
     btn.innerText = "Hesaplanıyor...";
     try {
-        const data = await fetchMacroData();
+        const response = await fetch('http://localhost:3000/api/macro');
+        const data = await response.json();
+        
         const currentCds = parseFloat(document.getElementById('cdsInput').value) || 250;
         
-        // Makas Hesabı (Senin verdiğin rakamlara göre: 43.99 ve 44.5)
+        // HESAPLAMALAR BURADA YAPILIYOR
         const makas = ((data.carsiDolar - data.bankaDolar) / data.bankaDolar) * 100;
         const reelFaiz = data.faiz - data.tufe;
-        const enfFarki = data.ufe - data.tufe;
+        const enfFarki = data.ufe - data.tufe; // Backend'den gelen dinamik verilerin farkı
 
-        // 1000 Puanlık Veltus Endeksi
+        // Endeks Puanı
         let score = 0;
-        score += calcPoints(Math.abs(makas), 0, 5, 200); // Makas mutlak değerce artınca risk artar
+        score += calcPoints(Math.abs(makas), 0, 5, 200);
         score += calcPoints(-reelFaiz, 0, 20, 200);
         score += calcPoints(data.icBorc, 100, 130, 150);
         score += calcPoints(enfFarki, 0, 20, 100);
@@ -45,7 +35,7 @@ async function runRadar() {
         updateUI(data, makas, reelFaiz, enfFarki, score, currentCds);
         document.getElementById('statusText').innerText = "Güncel: " + new Date().toLocaleTimeString();
     } catch (err) {
-        document.getElementById('statusText').innerText = "Hata!";
+        document.getElementById('statusText').innerText = "Bağlantı Hatası!";
     } finally {
         btn.innerText = "Radarı Güncelle";
     }
@@ -94,13 +84,13 @@ function updateUI(data, makas, reelFaiz, enfFarki, score, cds) {
     const grid = document.getElementById('cardGrid');
     grid.innerHTML = '';
     const cards = [
-        { title: "Döviz Makası", val: `%${makas.toFixed(2)}`, desc: makas < -1 ? "Çarşı bankanın altında, arbitraj fırsatı." : "Makas stabil.", link: "https://www.doviz.com/" },
-        { title: "Reel Faiz", val: `%${reelFaiz.toFixed(1)}`, desc: "TCMB - TÜFE Reel Getiri.", link: "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/temel+faaliyetler/para+politikasi/merkez+bankasi+faiz+oranlari" },
-        { title: "ÜFE-TÜFE Makası", val: `${enfFarki.toFixed(1)} P`, desc: "Üretici üzerindeki maliyet yükü.", link: "https://data.tuik.gov.tr/Kategori/GetKategori?p=Enflasyon-ve-Fiyat-106" },
-        { title: "İç Borç Çevirme", val: `%${data.icBorc}`, desc: "Hazine'nin borçlanma hızı.", link: "https://www.hmb.gov.tr/kamu-borclanma-istatistikleri" },
-        { title: "Cari İşlemler", val: `${data.cariAcik} Mr $`, desc: "Döviz dengesi.", link: "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/istatistikler/odemeler+dengesi+ve+ilgili+istatistikler" },
-        { title: "Net Rezerv", val: `${data.rezerv} Mr $`, desc: "Merkez Bankası müdahale gücü.", link: "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/istatistikler/en+cok+kullanilan+veriler/banka-bilancosu-verileri" },
-        { title: "M2 Para Arzı", val: `%${data.m2Artis}`, desc: "Likidite artış hızı.", link: "https://evds2.tcmb.gov.tr/index.php?/evds/serieDetail/TP.KS.A.M2.Y" },
+        { title: "Döviz Makası", val: `%${makas.toFixed(2)}`, desc: "Piyasa ve Banka farkı.", link: "https://www.doviz.com/" },
+        { title: "Reel Faiz", val: `%${reelFaiz.toFixed(1)}`, desc: "Faiz - Enflasyon.", link: "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/temel+faaliyetler/para+politikasi/" },
+        { title: "ÜFE-TÜFE Makası", val: `${enfFarki.toFixed(1)} P`, desc: "Üretici maliyet yükü.", link: "https://data.tuik.gov.tr/Kategori/GetKategori?p=enflasyon-ve-fiyat-106" },
+        { title: "İç Borç Çevirme", val: `%${data.icBorc}`, desc: "Hazine borçlanma hızı.", link: "https://www.hmb.gov.tr/borclanma-istatistikleri" },
+        { title: "Cari İşlemler", val: `${data.cariAcik} Mr $`, desc: "Dış denge.", link: "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/istatistikler/odemeler+dengesi+ve+ilgili+istatistikler/" },
+        { title: "Net Rezerv", val: `${data.rezerv} Mr $`, desc: "Merkez gücü.", link: "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/istatistikler/rezerv-istatistikleri" },
+        { title: "M2 Para Arzı", val: `%${data.m2Artis}`, desc: "Para arzı hızı.", link: "https://evds2.tcmb.gov.tr/index.php?/evds/mainmenu" },
         { title: "CDS Risk Primi", val: `${cds} Puan`, desc: "Ülke risk primi.", link: "https://tr.investing.com/rates-bonds/turkey-cds-5-year-usd" }
     ];
 
