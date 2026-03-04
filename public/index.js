@@ -1,106 +1,101 @@
 let myChart = null;
 
-function goToSource(url) {
-    if (confirm("VeltusApp'ten ayrılıp resmi kaynağa gitmek istediğinize emin misiniz?")) {
-        window.open(url, '_blank');
-    }
-}
-
+// HAFIZA (CACHE) VE UYARI SİSTEMİ
 async function runRadar() {
     const btn = document.getElementById('runBtn');
-    btn.innerText = "Hesaplanıyor...";
+    const status = document.getElementById('statusText');
+    btn.innerText = "Veri Aranıyor...";
+
     try {
         const response = await fetch('http://localhost:3000/api/macro');
+        if (!response.ok) throw new Error("API Kapalı");
+        
         const data = await response.json();
         
-        const currentCds = parseFloat(document.getElementById('cdsInput').value) || 250;
+        // Başarılıysa hafızaya al
+        const cache = { data, timestamp: new Date().toLocaleString() };
+        localStorage.setItem('veltus_cache', JSON.stringify(cache));
         
-        // HESAPLAMALAR BURADA YAPILIYOR
-        const makas = ((data.carsiDolar - data.bankaDolar) / data.bankaDolar) * 100;
-        const reelFaiz = data.faiz - data.tufe;
-        const enfFarki = data.ufe - data.tufe; // Backend'den gelen dinamik verilerin farkı
-
-        // Endeks Puanı
-        let score = 0;
-        score += calcPoints(Math.abs(makas), 0, 5, 200);
-        score += calcPoints(-reelFaiz, 0, 20, 200);
-        score += calcPoints(data.icBorc, 100, 130, 150);
-        score += calcPoints(enfFarki, 0, 20, 100);
-        score += calcPoints(-data.cariAcik, 0, 5, 100);
-        score += calcPoints(-data.rezerv, 0, 50, 100);
-        score += calcPoints(currentCds, 300, 600, 100);
-        score += calcPoints(data.m2Artis, 2, 8, 50);
-
-        score = Math.round(Math.min(1000, Math.max(0, score)));
-        updateUI(data, makas, reelFaiz, enfFarki, score, currentCds);
-        document.getElementById('statusText').innerText = "Güncel: " + new Date().toLocaleTimeString();
+        processAndDisplay(data);
+        status.innerText = "Canlı Veri: " + new Date().toLocaleTimeString();
+        status.style.color = "var(--text-muted)";
     } catch (err) {
-        document.getElementById('statusText').innerText = "Bağlantı Hatası!";
+        // Hata varsa hafızadan yükle
+        const cached = JSON.parse(localStorage.getItem('veltus_cache'));
+        if (cached) {
+            processAndDisplay(cached.data);
+            status.innerText = `Veri Çekilemedi. Eski veriler gösteriliyor (Tarih: ${cached.timestamp})`;
+            status.style.color = "var(--warm)";
+        } else {
+            status.innerText = "Bağlantı Hatası ve Kayıtlı Veri Yok!";
+            status.style.color = "var(--danger)";
+        }
     } finally {
         btn.innerText = "Radarı Güncelle";
     }
 }
 
-function updateUI(data, makas, reelFaiz, enfFarki, score, cds) {
+function processAndDisplay(data) {
+    const cds = parseFloat(document.getElementById('cdsInput').value) || 250;
+    
+    // Değerler null ise "Bekleniyor" yazdıracağız, skor hesaplamayacağız
+    const isDataComplete = Object.values(data).every(v => v !== null);
+    
+    let makas = (data.carsiDolar && data.bankaDolar) ? ((data.carsiDolar - data.bankaDolar) / data.bankaDolar) * 100 : null;
+    let reelFaiz = (data.faiz && data.tufe) ? data.faiz - data.tufe : null;
+    let enfFarki = (data.ufe && data.tufe) ? data.ufe - data.tufe : null;
+
+    let score = 0;
+    if (isDataComplete) {
+        score += calcPoints(Math.abs(makas), 0, 5, 200);
+        score += calcPoints(-reelFaiz, 0, 20, 200);
+        score += calcPoints(data.icBorc || 110, 100, 130, 150);
+        score += calcPoints(enfFarki, 0, 20, 100);
+        score += calcPoints(-data.cariAcik, 0, 5, 100);
+        score += calcPoints(-data.rezerv, 0, 50, 100);
+        score += calcPoints(cds, 300, 600, 100);
+        score += calcPoints(data.m2Artis, 2, 8, 50);
+    }
+
+    updateUI(data, makas, reelFaiz, enfFarki, Math.round(score), cds, isDataComplete);
+}
+
+function updateUI(data, makas, reelFaiz, enfFarki, score, cds, isDataComplete) {
     const mainScore = document.getElementById('mainScore');
-    const scoreBar = document.getElementById('scoreBar');
     const mainSummary = document.getElementById('mainSummary');
+    
+    if (!isDataComplete) {
+        mainScore.innerText = "Veri Bekleniyor...";
+        mainScore.style.color = "var(--warm)";
+    } else {
+        const hue = 140 - (score / 1000 * 140);
+        mainScore.innerText = `${score} / 1000`;
+        mainScore.style.color = `hsl(${hue}, 80%, 45%)`;
+    }
 
-    const hue = 140 - (score / 1000 * 140);
-    const color = `hsl(${hue}, 80%, 45%)`;
-
-    mainScore.innerText = `${score} / 1000`;
-    mainScore.style.color = color;
-    scoreBar.style.width = `${(score / 1000) * 100}%`;
-    scoreBar.style.backgroundColor = color;
-
-    // Gauge Chart
-    const ctx = document.getElementById('gaugeChart').getContext('2d');
-    if (myChart) myChart.destroy();
-    myChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            datasets: [{
-                data: [score, 1000 - score],
-                backgroundColor: [color, "#222"],
-                borderWidth: 0, circumference: 180, rotation: 270, cutout: '85%'
-            }]
-        },
-        options: { aspectRatio: 1.8, plugins: { legend: { display: false } } }
-    });
-
-    // Beyin / Özet
-    let summary;
-    if (score <= 300) summary = "🟢 GÜVENLİ LİMAN: Sistem stabil, TL'de kalınabilir.";
-    else if (score <= 600) summary = "🟡 ISINAN EKONOMİ: Baraj doluyor, fiziki mala yavaş geçiş yapılmalı.";
-    else if (score <= 850) summary = "🟠 STAGFLASYON RİSKİ: Durgunluk ve enflasyon! Üretici iflasları yakın.";
-    else summary = "🔴 BARAJ PATLADI: Kur şoku! Fiziki varlıklar dışında her şey eriyor.";
-
-    mainSummary.innerText = summary;
-    mainSummary.style.color = color;
-    mainSummary.style.backgroundColor = `${color}15`;
-
-    // Kartlar - DOĞRU LİNKLERLE
     const grid = document.getElementById('cardGrid');
     grid.innerHTML = '';
+
     const cards = [
-        { title: "Döviz Makası", val: `%${makas.toFixed(2)}`, desc: "Piyasa ve Banka farkı.", link: "https://www.doviz.com/" },
-        { title: "Reel Faiz", val: `%${reelFaiz.toFixed(1)}`, desc: "Faiz - Enflasyon.", link: "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/temel+faaliyetler/para+politikasi/" },
-        { title: "ÜFE-TÜFE Makası", val: `${enfFarki.toFixed(1)} P`, desc: "Üretici maliyet yükü.", link: "https://data.tuik.gov.tr/Kategori/GetKategori?p=enflasyon-ve-fiyat-106" },
-        { title: "İç Borç Çevirme", val: `%${data.icBorc}`, desc: "Hazine borçlanma hızı.", link: "https://www.hmb.gov.tr/borclanma-istatistikleri" },
-        { title: "Cari İşlemler", val: `${data.cariAcik} Mr $`, desc: "Dış denge.", link: "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/istatistikler/odemeler+dengesi+ve+ilgili+istatistikler/" },
-        { title: "Net Rezerv", val: `${data.rezerv} Mr $`, desc: "Merkez gücü.", link: "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/istatistikler/rezerv-istatistikleri" },
-        { title: "M2 Para Arzı", val: `%${data.m2Artis}`, desc: "Para arzı hızı.", link: "https://evds2.tcmb.gov.tr/index.php?/evds/mainmenu" },
-        { title: "CDS Risk Primi", val: `${cds} Puan`, desc: "Ülke risk primi.", link: "https://tr.investing.com/rates-bonds/turkey-cds-5-year-usd" }
+        { title: "Döviz Makası", val: makas !== null ? `%${makas.toFixed(2)}` : "Bekleniyor...", link: "https://www.doviz.com/" },
+        { title: "Reel Faiz", val: reelFaiz !== null ? `%${reelFaiz.toFixed(1)}` : "Bekleniyor...", link: "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/temel+faaliyetler/para+politikasi/" },
+        { title: "ÜFE-TÜFE Makası", val: enfFarki !== null ? `${enfFarki.toFixed(1)} P` : "Bekleniyor...", link: "https://data.tuik.gov.tr/Kategori/GetKategori?p=enflasyon-ve-fiyat-106" },
+        { title: "İç Borç Çevirme", val: data.icBorc ? `%${data.icBorc}` : "Bekleniyor...", link: "https://www.hmb.gov.tr/kamu-finansi-istatistikleri" },
+        { title: "Cari İşlemler", val: data.cariAcik ? `${data.cariAcik} Mr $` : "Bekleniyor...", link: "https://www.tcmb.gov.tr/wps/wcm/connect/tr/tcmb+tr/main+menu/istatistikler/odemeler+dengesi+ve+ilgili+istatistikler/" },
+        { title: "Net Rezerv", val: data.rezerv ? `${data.rezerv} Mr $` : "Bekleniyor...", link: "https://evds2.tcmb.gov.tr/index.php?/evds/serieDetail/TP.AB.A02" },
+        { title: "M2 Para Arzı", val: data.m2Artis ? `%${data.m2Artis}` : "Bekleniyor...", link: "https://evds2.tcmb.gov.tr/index.php?/evds/serieDetail/TP.KS.A.M2.Y" },
+        { title: "CDS Risk Primi", val: `${cds} Puan`, link: "https://tr.investing.com/rates-bonds/turkey-cds-5-year-usd" }
     ];
 
     cards.forEach(c => {
+        const isWaiting = c.val === "Bekleniyor...";
         grid.innerHTML += `
-            <div class="card">
+            <div class="card" style="${isWaiting ? 'border-color: var(--danger)' : ''}">
                 <span class="source-link" onclick="goToSource('${c.link}')">🔗</span>
-                <div><div class="card-title">${c.title}</div><div class="card-value">${c.val}</div></div>
-                <div class="card-desc">${c.desc}</div>
+                <div><div class="card-title">${c.title}</div><div class="card-value" style="${isWaiting ? 'color: var(--danger); font-size: 18px;' : ''}">${c.val}</div></div>
+                <div class="card-desc">${isWaiting ? 'Lütfen Manuel Kontrol Edin' : 'Veri Kaynaktan Alındı.'}</div>
             </div>`;
     });
 }
+// Diğer yardımcı fonksiyonlar (calcPoints vb.) aynı kalacak...
 window.onload = runRadar;

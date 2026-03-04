@@ -10,10 +10,10 @@ app.use(express.static('public'));
 const EVDS_BASE_URL = "https://evds2.tcmb.gov.tr/service/evds/";
 
 const seriesCodes = {
-    tufe: "TP.FG.J0",      // CPI (Yıllık)
-    ufe: "TP.FG.I0",       // PPI (Yıllık)
-    faiz: "TP.AP01",      // Politika Faizi
-    rezerv: "TP.AB.A02",  // Brüt Rezervler
+    tufe: "TP.FG.J0",      
+    ufe: "TP.FG.I0",       
+    faiz: "TP.AP01",      
+    rezerv: "TP.AB.A02",  
     cari: "TP.ODEMDENG.G1", 
     m2: "TP.KS.A.M2.Y",   
     icBorc: "TP.IBT.T1",  
@@ -37,28 +37,25 @@ app.get('/api/macro', async (req, res) => {
             return valid.length > 0 ? parseFloat(valid[valid.length - 1][key.replace(/\./g, "_")]) : null;
         };
 
-        // Piyasa verisi çekimi
+        const bankaDolar = getLatest(seriesCodes.dolar);
         const piyasaRes = await axios.get('https://finans.truncgil.com/today.json').catch(() => null);
-        const carsiDolar = piyasaRes ? parseFloat(piyasaRes.data["USD"]["Satış"].replace(",", ".")) : 43.99;
+        const carsiDolar = piyasaRes ? parseFloat(piyasaRes.data["USD"]["Satış"].replace(",", ".")) : null;
 
-        // VERİLERİ AYRI AYRI ÇEKİP PAKETLİYORUZ (HİÇBİRİ SABİT DEĞİL)
-        const data = {
+        // VERİ YOKSA NULL DÖNER, ASLA SAHTE SAYI YOK!
+        res.json({
             tufe: getLatest(seriesCodes.tufe),
             ufe: getLatest(seriesCodes.ufe),
             faiz: getLatest(seriesCodes.faiz),
             cariAcik: getLatest(seriesCodes.cari),
             rezerv: getLatest(seriesCodes.rezerv),
             m2Artis: getLatest(seriesCodes.m2),
-            icBorc: getLatest(seriesCodes.icBorc) || 110.0,
-            bankaDolar: getLatest(seriesCodes.dolar) || 44.50,
+            icBorc: getLatest(seriesCodes.icBorc),
+            bankaDolar: bankaDolar,
             carsiDolar: carsiDolar
-        };
-
-        res.json(data);
+        });
     } catch (error) {
-        console.error("Backend Veri Hatası:", error.message);
-        res.status(500).json({ error: "Veri Çekilemedi" });
+        res.status(500).json({ error: "API Hatası" });
     }
 });
 
-app.listen(3000, () => console.log("Radar Sunucusu Aktif! Tarayıcıda şunu aç: http://localhost:3000"));
+app.listen(3000, () => console.log("Radar Sunucusu Aktif!"));
