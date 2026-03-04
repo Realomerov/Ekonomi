@@ -1,127 +1,134 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
+    <link rel="manifest" href="/manifest.json">
+<script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+    }
+</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Baraj Endeksi | VeltusApp</title>
+    <title>Makro Veriler</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
-            --bg-dark: #0f1115;
-            --bg-panel: #1a1d24;
-            --text-main: #e2e8f0;
-            --text-muted: #94a3b8;
-            --accent: #3b82f6;
-            --border: #2dd4bf20;
+            --bg: #0f172a; --panel: #1e293b; --text: #f8fafc;
+            --text-muted: #94a3b8; --accent: #3b82f6;
+            --danger: #ef4444; --safe: #22c55e; --warm: #f59e0b;
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-        body { background-color: var(--bg-dark); color: var(--text-main); overflow-x: hidden; }
-
-        header { display: flex; align-items: center; padding: 15px 20px; background-color: var(--bg-panel); border-bottom: 1px solid var(--border); }
-        .hamburger { font-size: 24px; cursor: pointer; margin-right: 15px; user-select: none; }
-        .logo { font-size: 20px; font-weight: bold; letter-spacing: 1px; }
-        .logo span { color: var(--accent); }
-
-        .sidebar { height: 100%; width: 250px; position: fixed; z-index: 1000; top: 0; left: -250px; background-color: var(--bg-panel); transition: 0.3s; border-right: 1px solid var(--border); padding-top: 60px; }
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); overflow-x: hidden; }
+        
+        header { background-color: var(--panel); padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; position: sticky; top: 0; z-index: 100; }
+        .logo-area { display: flex; align-items: center; gap: 15px; }
+        .menu-btn { background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; transition: 0.3s; }
+        .menu-btn:hover { color: var(--accent); }
+        .logo { font-size: 20px; font-weight: bold; color: var(--accent); letter-spacing: 1px; }
+        
+        .sidebar { position: fixed; top: 0; left: -320px; width: 300px; height: 100vh; background: var(--panel); border-right: 1px solid #334155; z-index: 1000; transition: 0.4s ease; padding: 20px; box-sizing: border-box; overflow-y: auto; box-shadow: 5px 0 15px rgba(0,0,0,0.5); }
         .sidebar.active { left: 0; }
-        .close-btn { position: absolute; top: 10px; right: 20px; font-size: 30px; cursor: pointer; }
-        .sidebar a { padding: 15px 20px; text-decoration: none; color: var(--text-muted); display: block; border-left: 3px solid transparent; }
-        .sidebar a:hover, .sidebar a.active { color: var(--text-main); background-color: #2dd4bf10; border-left-color: var(--accent); }
+        .close-btn { background: none; border: none; color: var(--danger); font-size: 28px; float: right; cursor: pointer; margin-top: -10px; }
+        .sidebar h2 { font-size: 16px; color: var(--text-muted); border-bottom: 1px solid #334155; padding-bottom: 10px; margin-top: 30px; }
+        
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 13px; margin-bottom: 5px; color: var(--text-muted); }
+        .input-group label a { color: var(--accent); text-decoration: none; float: right; font-size: 11px;}
+        .input-group input { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid #334155; color: white; padding: 10px; border-radius: 6px; }
+        .btn { width: 100%; background: var(--accent); color: white; border: none; padding: 12px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 10px; transition: 0.3s;}
+        .btn:hover { background: #2563eb; }
 
-        .page { display: none; padding: 20px; max-width: 1200px; margin: 0 auto; }
-        .page.active { display: block; animation: fadeIn 0.4s; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .container { padding: 20px; max-width: 1200px; margin: 0 auto; transition: 0.4s ease; }
+        .container.shifted { margin-left: 320px; opacity: 0.5; pointer-events: none; }
+        
+        .gauge-container { background: var(--panel); padding: 30px; border-radius: 12px; text-align: center; border: 1px solid #334155; position: relative; margin-bottom: 20px; }
+        .gauge-chart-wrapper { width: 300px; margin: 0 auto; }
+        .score-text { position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); font-size: 42px; font-weight: bold; }
+        
+        /* GERİ GELEN KIZARAN BAR */
+        .progress-bg { background: #0f172a; border-radius: 10px; height: 14px; margin-top: 25px; overflow: hidden; border: 1px solid #334155; width: 80%; margin-left: auto; margin-right: auto; }
+        .progress-bar { height: 100%; width: 0%; transition: width 1s ease-in-out, background-color 1s ease-in-out; }
 
-        .controls { display: flex; gap: 15px; margin-bottom: 30px; align-items: center; flex-wrap: wrap; background: var(--bg-panel); padding: 15px; border-radius: 12px; border: 1px solid var(--border); }
-        .input-group { display: flex; flex-direction: column; }
-        label { font-size: 12px; color: var(--text-muted); margin-bottom: 5px; }
-        input { background: var(--bg-dark); border: 1px solid var(--border); color: #fff; padding: 10px; border-radius: 6px; outline: none; width: 150px; }
-        button { background: var(--accent); color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
-
-        .index-container { background: var(--bg-panel); padding: 25px; border-radius: 16px; text-align: center; margin-bottom: 30px; border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .chart-box { width: 300px; height: 160px; margin: 0 auto; position: relative; }
-        .index-score { font-size: 42px; font-weight: 900; margin-top: -40px; }
-        .progress-bar { width: 100%; height: 8px; background: #333; border-radius: 10px; margin: 20px 0; overflow: hidden; }
-        .progress-fill { height: 100%; width: 0%; transition: width 1s, background-color 1s; }
-        .index-summary { font-size: 16px; font-weight: bold; padding: 15px; border-radius: 8px; margin-top: 10px; }
-
+        .summary-box { background: rgba(59, 130, 246, 0.1); padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 16px; font-weight: bold; border-left: 4px solid var(--accent); }
+        
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
-        .card { background: var(--bg-panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border); min-height: 140px; display: flex; flex-direction: column; justify-content: space-between; }
-        .card-title { font-size: 12px; color: var(--text-muted); text-transform: uppercase; }
-        .card-value { font-size: 24px; font-weight: bold; margin: 8px 0; }
-        .card-desc { font-size: 12px; color: #cbd5e1; border-top: 1px solid var(--border); padding-top: 10px; }
-
-        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 999; }
-        .overlay.active { display: block; }
-        /* Dış Bağlantı İkonu Stili */
-.source-link {
-    position: absolute;
-    top: 15px;
-    right: 15px;
-    color: var(--text-muted);
-    font-size: 18px;
-    text-decoration: none;
-    transition: 0.3s;
-    cursor: pointer;
-}
-.source-link:hover { color: var(--accent); transform: scale(1.2); }
-.card { position: relative; } /* İkonun kart içinde konumlanması için */
+        .card { background: var(--panel); padding: 20px; border-radius: 12px; border: 1px solid #334155; position: relative; transition: transform 0.2s;}
+        .card:hover { transform: translateY(-3px); border-color: var(--accent); }
+        .card-title { font-size: 14px; color: var(--text-muted); margin-bottom: 10px; }
+        .card-value { font-size: 28px; font-weight: bold; margin-bottom: 5px; }
+        .card-desc { font-size: 12px; color: #64748b; }
+        .source-link { position: absolute; top: 20px; right: 20px; text-decoration: none; font-size: 16px; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div class="sidebar" id="sidebar">
-        <span class="close-btn" onclick="toggleMenu()">&times;</span>
-        <a href="#" class="active" onclick="switchPage('kokpit', this)">Makro Baraj Kokpiti</a>
-        <a href="#" onclick="switchPage('gayrimenkul', this)">Gayrimenkul Radarı</a>
-        <a href="#" onclick="switchPage('portfoy', this)">Portföy</a>
+
+<header>
+    <div class="logo-area">
+        <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        <div class="logo">KOKPİT</div>
     </div>
-    <div class="overlay" id="overlay" onclick="toggleMenu()"></div>
+    <div style="font-size: 12px; color: var(--text-muted);" id="statusText">Döviz Çekiliyor...</div>
+</header>
 
-    <header>
-        <div class="hamburger" onclick="toggleMenu()">&#9776;</div>
-        <div class="logo">Veltus<span>App</span></div>
-    </header>
-
-    <div id="kokpit" class="page active">
-        <div class="controls">
-            <div class="input-group">
-                <label>CDS Puanı (Manuel)</label>
-                <input type="number" id="cdsInput" value="250">
-            </div>
-            <button onclick="runRadar()" id="runBtn">Radarı Çalıştır</button>
-            <span id="statusText" style="font-size: 11px; color: var(--text-muted); margin-left: 10px;">Sistem Hazır...</span>
+<div class="sidebar" id="sidebar">
+    <button class="close-btn" onclick="toggleMenu()">&times;</button>
+    <h2>AYLIK MAKRO VERİLER</h2>
+    <p style="font-size: 11px; color: var(--warm); margin-top: -5px;">* Döviz kurları otomatik çekilir.</p>
+    
+    <div class="input-group">
+        <label>TÜFE (Yıllık Enflasyon %) <a href="https://data.tuik.gov.tr/" target="_blank">TÜİK 🔗</a></label>
+        <input type="number" id="inpTufe" step="0.01">
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+            💡 <b>İpucu:</b> Acımasız gerçeklik için <b>ENAG</b> veya <b>İTO</b> (Ücretliler Geçinme) yıllık verisini girin.
         </div>
-
-        <div class="index-container">
-            <div class="chart-box">
-                <canvas id="gaugeChart"></canvas>
-            </div>
-            <div class="index-score" id="mainScore">0 / 1000</div>
-            <div class="progress-bar">
-                <div class="progress-fill" id="scoreBar"></div>
-            </div>
-            <div class="index-summary" id="mainSummary">Sistem analiz için bekliyor...</div>
+    </div>
+    <div class="input-group">
+        <label>ÜFE (Üretici Enflasyonu %) <a href="https://data.tuik.gov.tr/" target="_blank">TÜİK 🔗</a></label>
+        <input type="number" id="inpUfe" step="0.01">
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+            💡 <b>İpucu:</b> Sadece "Yıllık Yİ-ÜFE" veya <b>İTO</b> (Toptan Eşya) yıllık fiyatları indeksi oranını girin. Aylık girmeyin.
         </div>
-
-        <div class="grid" id="cardGrid"></div>
+    </div>
+    <div class="input-group">
+        <label>TCMB Politika Faizi (%) <a href="https://www.tcmb.gov.tr/" target="_blank">TCMB 🔗</a></label>
+        <input type="number" id="inpFaiz" step="0.01">
+    </div>
+    <div class="input-group">
+        <label>Cari Açık / Fazla (Milyar $) <a href="https://evds2.tcmb.gov.tr/" target="_blank">EVDS 🔗</a></label>
+        <input type="number" id="inpCari" step="0.01" placeholder="Fazla ise + yazın">
+    </div>
+    <div class="input-group">
+        <label>Net Rezerv (Milyar $) <a href="https://evds2.tcmb.gov.tr/" target="_blank">EVDS 🔗</a></label>
+        <input type="number" id="inpRezerv" step="0.01" placeholder="Artıda ise + yazın">
+    </div>
+    <div class="input-group">
+        <label>M2 Para Arzı Artışı (%) <a href="https://evds2.tcmb.gov.tr/" target="_blank">EVDS 🔗</a></label>
+        <input type="number" id="inpM2" step="0.01">
+    </div>
+    <div class="input-group">
+        <label>İç Borç Çevirme (%) <a href="https://www.hmb.gov.tr/kamu-finansmani-raporlari" target="_blank">Hazine 🔗</a></label>
+        <input type="number" id="inpBorc" step="0.01">
+    </div>
+    <div class="input-group">
+        <label>CDS Risk Primi <a href="https://tr.investing.com/rates-bonds/turkey-cds-5-year-usd" target="_blank">Investing 🔗</a></label>
+        <input type="number" id="inpCds" step="1">
     </div>
 
-    <div id="gayrimenkul" class="page"><h2>Gayrimenkul Radarı</h2></div>
-    <div id="portfoy" class="page"><h2>Portföy</h2></div>
+    <button class="btn" onclick="saveManualData()">KAYDET & HESAPLA</button>
+</div>
 
-    <script src="index.js"></script>
-    <script>
-        function toggleMenu() {
-            document.getElementById('sidebar').classList.toggle('active');
-            document.getElementById('overlay').classList.toggle('active');
-        }
-        function switchPage(pageId, element) {
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-            document.getElementById(pageId).classList.add('active');
-            element.classList.add('active');
-            toggleMenu();
-        }
-    </script>
+<div class="container" id="mainContainer">
+    <div class="gauge-container">
+        <div class="gauge-chart-wrapper"><canvas id="gaugeChart"></canvas></div>
+        <div class="score-text" id="mainScore">...</div>
+        <div class="progress-bg">
+            <div class="progress-bar" id="scoreBar"></div>
+        </div>
+        <div class="summary-box" id="mainSummary">Veriler toplanıyor...</div>
+    </div>
+    
+    <div class="grid" id="cardGrid"></div>
+</div>
+
+<script src="index.js"></script>
 </body>
 </html>
