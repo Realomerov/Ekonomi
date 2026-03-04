@@ -1,6 +1,6 @@
 self.addEventListener('install', (e) => {
     e.waitUntil(
-      caches.open('veltus-store').then((cache) => cache.addAll([
+      caches.open('veltus-store-v2').then((cache) => cache.addAll([
         '/index.html',
         '/index.js',
         '/manifest.json'
